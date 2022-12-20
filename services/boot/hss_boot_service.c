@@ -61,6 +61,9 @@
 
 #define BOOT_SUB_CHUNK_SIZE 256u
 
+/* WAR: SKIP opensbi HART init*/
+#define ENABLE_SMP_BOOT 1
+
 /*
  * Module Prototypes (states)
  */
@@ -76,7 +79,9 @@ static void boot_download_chunks_handler(struct StateMachine * const pMyMachine)
 static void boot_download_chunks_onExit(struct StateMachine * const pMyMachine);
 static void boot_opensbi_init_onEntry(struct StateMachine * const pMyMachine);
 static void boot_opensbi_init_handler(struct StateMachine * const pMyMachine);
+#if ENABLE_SMP_BOOT
 static void boot_opensbi_init_onExit(struct StateMachine * const pMyMachine);
+#endif
 static void boot_wait_onEntry(struct StateMachine * const pMyMachine);
 static void boot_wait_handler(struct StateMachine * const pMyMachine);
 static void boot_error_handler(struct StateMachine * const pMyMachine);
@@ -114,7 +119,11 @@ static const struct StateDesc boot_state_descs[] = {
     { (const stateType_t)BOOT_SETUP_PMP_COMPLETE, (const char *)"SetupPMPComplete", &boot_setup_pmp_complete_onEntry, NULL,                         &boot_setup_pmp_complete_handler },
     { (const stateType_t)BOOT_ZERO_INIT_CHUNKS,   (const char *)"ZeroInit",         &boot_zero_init_chunks_onEntry,   NULL,                         &boot_zero_init_chunks_handler },
     { (const stateType_t)BOOT_DOWNLOAD_CHUNKS,    (const char *)"Download",         &boot_download_chunks_onEntry,    &boot_download_chunks_onExit, &boot_download_chunks_handler },
+ #ifdef ENABLE_SMP_BOOT
     { (const stateType_t)BOOT_OPENSBI_INIT,       (const char *)"OpenSBIInit",      &boot_opensbi_init_onEntry,       &boot_opensbi_init_onExit,    &boot_opensbi_init_handler },
+#else
+    { (const stateType_t)BOOT_OPENSBI_INIT, (const char *)"OpenSBIInit", &boot_opensbi_init_onEntry, NULL, &boot_opensbi_init_handler },
+#endif
     { (const stateType_t)BOOT_WAIT,               (const char *)"Wait",             &boot_wait_onEntry,               NULL,                         &boot_wait_handler },
     { (const stateType_t)BOOT_IDLE,               (const char *)"Idle",             &boot_idle_onEntry,               NULL,                         &boot_idle_handler },
     { (const stateType_t)BOOT_ERROR,              (const char *)"Error",            NULL,                             NULL,                         &boot_error_handler } };
@@ -635,7 +644,11 @@ static void boot_opensbi_init_handler(struct StateMachine * const pMyMachine)
                             peer, pBootImage->hart[peer-1].entryPoint);
 
                         result = IPI_MessageDeliver(pInstanceData->msgIndexAux[peer-1], peer,
+#ifdef ENABLE_SMP_BOOT
+                            IPI_MSG_GOTO,
+#else
                             IPI_MSG_OPENSBI_INIT,
+#endif
                             pBootImage->hart[peer-1].privMode,
                             (void *)pBootImage->hart[peer-1].entryPoint,
                             (void *)pInstanceData->ancilliaryData);
@@ -650,7 +663,22 @@ static void boot_opensbi_init_handler(struct StateMachine * const pMyMachine)
                 }
                 pInstanceData->iterator++;
             } else {
+#ifdef ENABLE_SMP_BOOT
+		result = IPI_MessageAlloc(&(pInstanceData->msgIndex));
+                assert(result);
+                //mb();
+                //mb_i();
+                result = IPI_MessageDeliver(pInstanceData->msgIndex, target,
+                IPI_MSG_GOTO,
+                pBootImage->hart[target-1].privMode,
+                (void *)pBootImage->hart[target-1].entryPoint,
+                (void *)pInstanceData->ancilliaryData);
+                assert(result);
+
+                pMyMachine->state = BOOT_IDLE;
+#else
                 pMyMachine->state = BOOT_WAIT;
+#endif
             }
         } else {
             pMyMachine->state = BOOT_WAIT;
@@ -658,6 +686,7 @@ static void boot_opensbi_init_handler(struct StateMachine * const pMyMachine)
     }
 }
 
+#if ENABLE_SMP_BOOT
 static void boot_opensbi_init_onExit(struct StateMachine * const pMyMachine)
 {
     struct HSS_Boot_LocalData * const pInstanceData = pMyMachine->pInstanceData;
@@ -702,7 +731,7 @@ static void boot_opensbi_init_onExit(struct StateMachine * const pMyMachine)
             pMyMachine->pMachineName, target, pBootImage, pBootImage->hart[target-1].entryPoint);
     }
 }
-
+#endif
 /////////////////
 
 static void boot_wait_onEntry(struct StateMachine * const pMyMachine)

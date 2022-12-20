@@ -1029,10 +1029,17 @@ void yaml_parser(char const * const input_filename)
 	bootImage.hart[2].privMode = PRV_ILLEGAL;
 	bootImage.hart[3].privMode = PRV_ILLEGAL;
 
-	bootImage.hart[0].flags = 0u;
-	bootImage.hart[1].flags = 0u;
-	bootImage.hart[2].flags = 0u;
-	bootImage.hart[3].flags = 0u;
+#ifdef ENABLE_SMP_BOOT
+        bootImage.hart[0].flags = BOOT_FLAG_SKIP_OPENSBI;
+        bootImage.hart[1].flags = BOOT_FLAG_SKIP_OPENSBI;
+        bootImage.hart[2].flags = BOOT_FLAG_SKIP_OPENSBI;
+        bootImage.hart[3].flags = BOOT_FLAG_SKIP_OPENSBI;
+#else
+        bootImage.hart[0].flags = 0u;
+        bootImage.hart[1].flags = 0u;
+        bootImage.hart[2].flags = 0u;
+        bootImage.hart[3].flags = 0u;
+#endif
 
 	yaml_parser_set_input_file(&parser, configFileIn);
 	yaml_event_t event;
